@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -11,11 +11,21 @@ import {
   History,
   Users,
   Settings,
-  Power
+  Power,
+  Copy,
+  Check
 } from 'lucide-react';
 
 export default function Sidebar({ user, onLogout }) {
   const role = user?.role;
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyLoginLink = () => {
+    const loginUrl = window.location.origin + '/login';
+    navigator.clipboard.writeText(loginUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   // Define navigation based on role
   const getNavLinks = () => {
@@ -83,6 +93,17 @@ export default function Sidebar({ user, onLogout }) {
             );
           })}
         </nav>
+
+        {/* Copy Login Link Action */}
+        <div className="px-4 pb-4">
+          <button
+            onClick={handleCopyLoginLink}
+            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-xs font-semibold tracking-wide text-slate-400 hover:text-white hover:bg-slate-900/40 transition-all cursor-pointer border border-dashed border-slate-900 hover:border-slate-800"
+          >
+            {copied ? <Check className="w-4 h-4 text-emerald-450 shrink-0" /> : <Copy className="w-4 h-4 text-teal-400 shrink-0" />}
+            {copied ? 'Copied Login Link!' : 'Copy Login Link'}
+          </button>
+        </div>
       </div>
 
       {/* User profile footer */}
