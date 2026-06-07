@@ -1102,6 +1102,5 @@ const SbtLogo = ({ className = "w-16 h-16" }) => (
       <path d="M 20 50 A 30 30 0 0 1 50 20 A 4 4 0 0 1 50 28 A 22 22 0 0 0 28 50 A 4 4 0 0 1 20 50 Z" fill="url(#grad-blue)" transform="rotate(270 50 50)" />
     </svg>
     <span className="text-xl font-black tracking-widest text-[#38bdf8] mt-2 font-sans">SBT</span>
-    <span className="text-[9px] font-bold tracking-[0.25em] text-slate-400 uppercase font-sans -mt-0.5">WALLET APP</span>
   </div>
 );
