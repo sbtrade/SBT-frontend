@@ -391,7 +391,9 @@ export default function SuperAdminDashboard() {
                       <tr key={log.id} className="hover:bg-slate-950/10 transition-colors">
                         <td className="py-3 px-2">
                           <div className="font-bold text-slate-200">{log.actor_user_id || 'SYSTEM'}</div>
-                          <div className="text-[9px] font-mono text-slate-500 uppercase">{log.actor_role}</div>
+                          <div className="text-[9px] font-mono text-slate-500 uppercase">
+                            {log.actor_role === 'SUPER_ADMIN' ? 'SYSTEM AUDITOR' : log.actor_role}
+                          </div>
                         </td>
                         <td className="py-3 font-bold text-[9px] uppercase tracking-wider text-slate-300">{log.action}</td>
                         <td className="py-3 font-mono text-slate-500">{log.ip_address}</td>

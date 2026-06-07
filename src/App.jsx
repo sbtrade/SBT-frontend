@@ -153,7 +153,7 @@ export default function App() {
           path="/superadmin"
           element={
             user && user.role === 'SUPER_ADMIN' ? (
-              <DashboardLayout user={user} onLogout={handleLogout} title="Super Admin System Audit" />
+              <DashboardLayout user={user} onLogout={handleLogout} title="System Auditor Panel" />
             ) : (
               <Navigate to="/login" replace />
             )

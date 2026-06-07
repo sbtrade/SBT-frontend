@@ -4,6 +4,7 @@ import { Shield } from 'lucide-react';
 export default function Header({ title, user }) {
   // Format role name for display
   const formatRole = (role) => {
+    if (role === 'SUPER_ADMIN') return 'SYSTEM AUDITOR';
     return role ? role.replace('_', ' ') : '';
   };
 
