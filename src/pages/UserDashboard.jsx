@@ -329,7 +329,7 @@ export default function UserDashboard() {
       )}
 
       {/* 1. Wallet overview cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <div className="bg-[#0a122c] border border-slate-900/60 rounded-3xl p-6 relative overflow-hidden shadow-lg">
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-teal-500 to-indigo-500" />
           <span className="text-[10px] font-bold text-teal-400 uppercase tracking-widest block mb-2">Available Balance</span>
@@ -348,35 +348,6 @@ export default function UserDashboard() {
         <div className="bg-[#0a122c] border border-slate-900/60 rounded-3xl p-6 shadow-sm">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Total Disbursed (Debits)</span>
           <h3 className="text-3xl font-extrabold text-rose-400 tracking-tight">{formatMoney(balanceData.total_debits)}</h3>
-        </div>
-
-        <div className="bg-[#0a122c] border border-slate-900/60 rounded-3xl p-6 shadow-sm flex flex-col justify-between items-center text-center relative overflow-hidden">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-teal-500 to-indigo-500" />
-          <span className="text-[10px] font-bold text-teal-450 uppercase tracking-widest block mb-2 w-full text-left">My Wallet Address</span>
-          {balanceData.wallet_address ? (
-            <div className="flex flex-col items-center gap-3 w-full">
-              <div className="p-1.5 bg-white rounded-2xl flex items-center justify-center">
-                <img 
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=${balanceData.wallet_address}&color=0a122c`} 
-                  alt="Wallet QR Code" 
-                  className="w-20 h-20" 
-                />
-              </div>
-              <div className="w-full">
-                <span className="block font-mono text-[9px] bg-slate-950 px-2 py-1.5 rounded-xl text-slate-350 border border-slate-900 select-all break-all cursor-pointer hover:border-slate-800 hover:text-white flex items-center justify-center gap-1" title="Click to copy wallet address" onClick={() => {
-                  navigator.clipboard.writeText(balanceData.wallet_address);
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 2000);
-                }}>
-                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-450 shrink-0" /> : <Copy className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
-                  {balanceData.wallet_address}
-                </span>
-                <span className="text-[8px] text-slate-500 font-semibold block mt-1">Click address to copy</span>
-              </div>
-            </div>
-          ) : (
-            <span className="text-xs text-slate-555 py-8">Generating address...</span>
-          )}
         </div>
       </div>
 
