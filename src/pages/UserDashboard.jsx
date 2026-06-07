@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import api from '../utils/api';
 import StatusBadge from '../components/StatusBadge';
 import Modal from '../components/Modal';
-import { ArrowUpRight, ArrowDownLeft, Send, Landmark, HelpCircle, RefreshCw, LandmarkIcon, AlertTriangle, Copy, Check, Camera, Scan, User } from 'lucide-react';
+import { ArrowUpRight, ArrowDownLeft, Send, Landmark, HelpCircle, RefreshCw, LandmarkIcon, AlertTriangle, Copy, Check, Camera, Scan, User, Upload } from 'lucide-react';
 
 export default function UserDashboard() {
   const [balanceData, setBalanceData] = useState({ balance: '0.00', total_credits: '0.00', total_debits: '0.00', kyc_status: 'NOT_SUBMITTED', wallet_address: null });
@@ -19,6 +19,13 @@ export default function UserDashboard() {
   const [simulateScanOpen, setSimulateScanOpen] = useState(false);
   const [activeAddresses, setActiveAddresses] = useState([]);
   const [copied, setCopied] = useState(false);
+
+  // QR Scanning Refs and State
+  const videoRef = useRef(null);
+  const canvasRef = useRef(document.createElement('canvas'));
+  const [scanMethod, setScanMethod] = useState('camera'); // 'camera', 'upload', 'simulate'
+  const [cameraError, setCameraError] = useState('');
+  const [scanStream, setScanStream] = useState(null);
   
   // Real Money Deposit State
   const [depositAmount, setDepositAmount] = useState('');
@@ -143,8 +150,112 @@ export default function UserDashboard() {
     }
   };
 
+  const startCamera = async () => {
+    setCameraError('');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      setScanStream(stream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.setAttribute('playsinline', 'true');
+        videoRef.current.play().catch(e => console.warn('Video play interrupted:', e));
+        requestAnimationFrame(tick);
+      }
+    } catch (err) {
+      console.error('Camera access error:', err);
+      setCameraError('Unable to access camera. Please check permissions or try uploading a QR image file.');
+    }
+  };
+
+  const stopCamera = () => {
+    if (scanStream) {
+      scanStream.getTracks().forEach(track => track.stop());
+      setScanStream(null);
+    }
+  };
+
+  const tick = () => {
+    if (!videoRef.current || videoRef.current.readyState !== videoRef.current.HAVE_ENOUGH_DATA) {
+      if (simulateScanOpen && scanMethod === 'camera') {
+        requestAnimationFrame(tick);
+      }
+      return;
+    }
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    if (window.jsQR) {
+      const code = window.jsQR(imageData.data, imageData.width, imageData.height, {
+        inversionAttempts: 'dontInvert',
+      });
+      if (code) {
+        handleScanSuccess(code.data);
+        return;
+      }
+    }
+    if (simulateScanOpen && scanMethod === 'camera') {
+      requestAnimationFrame(tick);
+    }
+  };
+
+  const handleScanSuccess = (address) => {
+    stopCamera();
+    setTransferWalletAddress(address);
+    setSimulateScanOpen(false);
+    handleVerifyReceiver(address);
+  };
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = canvasRef.current;
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        if (window.jsQR) {
+          const code = window.jsQR(imageData.data, imageData.width, imageData.height);
+          if (code) {
+            handleScanSuccess(code.data);
+          } else {
+            alert('No QR Code found in this image. Please upload a clear image of a wallet QR code.');
+          }
+        } else {
+          alert('QR scanner library not loaded yet. Please try again in a moment.');
+        }
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  useEffect(() => {
+    if (simulateScanOpen && scanMethod === 'camera') {
+      startCamera();
+    } else {
+      stopCamera();
+    }
+    return () => {
+      stopCamera();
+    };
+  }, [simulateScanOpen, scanMethod]);
+
   const openSimulateScan = async () => {
     setSimulateScanOpen(true);
+    setScanMethod('camera');
     try {
       const res = await api.get('/wallet/active-addresses');
       setActiveAddresses(res.data);
@@ -154,9 +265,7 @@ export default function UserDashboard() {
   };
 
   const handleSimulateScanSelect = (address) => {
-    setTransferWalletAddress(address);
-    setSimulateScanOpen(false);
-    handleVerifyReceiver(address);
+    handleScanSuccess(address);
   };
 
   const handleWithdrawalRequest = async (e) => {
@@ -448,12 +557,20 @@ export default function UserDashboard() {
               )}
 
               {verifiedReceiver && (
-                <div className="p-4 rounded-xl bg-teal-950/20 border border-teal-500/20 text-teal-400 text-xs font-semibold flex items-center gap-3 animate-in fade-in duration-200">
-                  <User className="w-5 h-5 text-teal-400 shrink-0" />
+                <div className={`p-4 rounded-xl text-xs font-semibold flex items-center gap-3 animate-in fade-in duration-200 ${
+                  verifiedReceiver.is_external 
+                    ? 'bg-amber-950/20 border border-amber-500/20 text-amber-400' 
+                    : 'bg-teal-950/20 border border-teal-500/20 text-teal-400'
+                }`}>
+                  {verifiedReceiver.is_external ? <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" /> : <User className="w-5 h-5 text-teal-400 shrink-0" />}
                   <div>
-                    <span className="block text-[10px] text-slate-500 font-bold uppercase tracking-wider">Verified Recipient</span>
+                    <span className="block text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                      {verifiedReceiver.is_external ? 'External Recipient (Manual Queue)' : 'Verified Recipient'}
+                    </span>
                     <span className="block text-slate-200 font-extrabold text-sm">{verifiedReceiver.fullname}</span>
-                    <span className="block font-mono text-[10px] text-slate-400 mt-0.5">ID: {verifiedReceiver.user_id}</span>
+                    <span className="block font-mono text-[10px] text-slate-400 mt-0.5">
+                      {verifiedReceiver.is_external ? 'Target Address: ' + verifiedReceiver.wallet_address : 'ID: ' + verifiedReceiver.user_id}
+                    </span>
                   </div>
                 </div>
               )}
@@ -662,17 +779,23 @@ export default function UserDashboard() {
           </div>
         </div>
 
-      </div>
-
-      {/* Confirmation Modal */}
+      </div>      {/* Confirmation Modal */}
       <Modal isOpen={confirmSendOpen} onClose={() => setConfirmSendOpen(false)} title="Confirm Fund Transfer">
         {verifiedReceiver && (
           <div className="space-y-4">
-            <div className="p-4 bg-amber-500/5 border border-amber-500/10 rounded-xl flex items-start gap-3">
-              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            <div className={`p-4 rounded-xl flex items-start gap-3 ${
+              verifiedReceiver.is_external ? 'bg-amber-500/5 border border-amber-500/10' : 'bg-amber-500/5 border border-amber-500/10'
+            }`}>
+              <AlertTriangle className={`w-5 h-5 shrink-0 mt-0.5 ${verifiedReceiver.is_external ? 'text-amber-500' : 'text-amber-400'}`} />
               <div className="text-xs text-slate-350">
-                <p className="font-bold text-amber-400 uppercase tracking-wide">Verification Shield Active</p>
-                <p className="mt-1">Please verify the recipient details below. Once confirmed, this transaction will be submitted to the ledger for administrative approval.</p>
+                <p className={`font-bold uppercase tracking-wide ${verifiedReceiver.is_external ? 'text-amber-500' : 'text-amber-400'}`}>
+                  {verifiedReceiver.is_external ? 'External Fulfiller Alert' : 'Verification Shield Active'}
+                </p>
+                <p className="mt-1">
+                  {verifiedReceiver.is_external 
+                    ? 'This address is external to our system. The transfer will be placed in the PENDING queue. The admin will verify the address, execute the send externally, and approve this request. Your balance will be deducted only upon approval.'
+                    : 'Please verify the recipient details below. Once confirmed, this transaction will be submitted to the ledger for administrative approval.'}
+                </p>
               </div>
             </div>
 
@@ -707,7 +830,7 @@ export default function UserDashboard() {
               <button
                 onClick={handleTransferRequest}
                 disabled={formLoading}
-                className="flex-1 py-2.5 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-bold uppercase active:scale-[0.98] cursor-pointer"
+                className="flex-1 py-2.5 bg-teal-650 hover:bg-teal-600 text-white rounded-xl text-xs font-bold uppercase active:scale-[0.98] cursor-pointer border border-teal-500/20"
               >
                 {formLoading ? 'Submitting...' : 'Confirm & Send'}
               </button>
@@ -715,42 +838,124 @@ export default function UserDashboard() {
           </div>
         )}
       </Modal>
-
-      {/* Simulated QR Scanner Modal */}
-      <Modal isOpen={simulateScanOpen} onClose={() => setSimulateScanOpen(false)} title="Simulate QR Code Scan">
+      {/* QR Scanner Modal (Camera, Image Upload, Simulation) */}
+      <Modal isOpen={simulateScanOpen} onClose={() => setSimulateScanOpen(false)} title="Scan Wallet QR Code">
         <div className="space-y-4">
-          <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-900 text-center">
-            <Camera className="w-8 h-8 text-teal-400 mx-auto mb-2 animate-pulse" />
-            <h5 className="text-xs font-bold text-slate-200 uppercase tracking-wider">Simulated Camera Viewfinder</h5>
-            <p className="text-[10px] text-slate-500 font-semibold mt-1">Select an active user wallet to simulate scanning their QR code.</p>
+          {/* Scan Tabs */}
+          <div className="grid grid-cols-3 gap-2 border-b border-slate-900 pb-3">
+            <button
+              type="button"
+              onClick={() => setScanMethod('camera')}
+              className={`py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                scanMethod === 'camera' 
+                  ? 'bg-teal-950/20 text-teal-400 font-bold border border-teal-500/20' 
+                  : 'bg-slate-950/45 text-slate-500 hover:text-slate-350'
+              }`}
+            >
+              Camera
+            </button>
+            <button
+              type="button"
+              onClick={() => setScanMethod('upload')}
+              className={`py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                scanMethod === 'upload' 
+                  ? 'bg-teal-950/20 text-teal-400 font-bold border border-teal-500/20' 
+                  : 'bg-slate-950/45 text-slate-500 hover:text-slate-350'
+              }`}
+            >
+              Upload Image
+            </button>
+            <button
+              type="button"
+              onClick={() => setScanMethod('simulate')}
+              className={`py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                scanMethod === 'simulate' 
+                  ? 'bg-teal-950/20 text-teal-400 font-bold border border-teal-500/20' 
+                  : 'bg-slate-950/45 text-slate-500 hover:text-slate-350'
+              }`}
+            >
+              Simulate Scan
+            </button>
           </div>
 
-          <div className="max-h-60 overflow-y-auto divide-y divide-slate-900/60 border border-slate-900 rounded-xl bg-slate-950">
-            {activeAddresses.length === 0 ? (
-              <div className="p-6 text-center text-xs text-slate-500">No other active users found to simulate scan.</div>
-            ) : (
-              activeAddresses.map(addr => (
-                <div key={addr.wallet_address} className="p-3 hover:bg-slate-900/40 transition-colors flex items-center justify-between">
-                  <div>
-                    <span className="block text-xs font-bold text-slate-200">{addr.fullname}</span>
-                    <span className="block font-mono text-[9px] text-slate-500 truncate max-w-[200px] mt-0.5">{addr.wallet_address}</span>
-                  </div>
-                  <button
-                    onClick={() => handleSimulateScanSelect(addr.wallet_address)}
-                    className="px-2.5 py-1 bg-teal-650/80 hover:bg-teal-600 text-white rounded text-[9px] font-bold uppercase tracking-wider cursor-pointer"
-                  >
-                    Scan QR
-                  </button>
+          {/* Tab 1: Camera Scanning */}
+          {scanMethod === 'camera' && (
+            <div className="space-y-3">
+              {cameraError ? (
+                <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-350 text-xs text-center font-semibold">
+                  {cameraError}
                 </div>
-              ))
-            )}
-          </div>
+              ) : (
+                <div className="relative border border-slate-850 rounded-2xl overflow-hidden aspect-video bg-black flex items-center justify-center">
+                  <video
+                    ref={videoRef}
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 border-2 border-teal-500/30 flex items-center justify-center pointer-events-none">
+                    <div className="w-48 h-48 border-2 border-teal-450 border-dashed rounded-2xl animate-pulse flex items-center justify-center">
+                      <span className="text-[10px] text-teal-300 font-bold bg-slate-950/80 px-2 py-1 rounded-lg">Align QR Code here</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tab 2: Upload QR Image */}
+          {scanMethod === 'upload' && (
+            <div className="p-6 border border-dashed border-slate-800 rounded-2xl bg-[#030712] flex flex-col items-center justify-center text-center space-y-4">
+              <Upload className="w-8 h-8 text-teal-450" />
+              <div>
+                <h5 className="text-xs font-bold text-slate-350">Select QR Code Image File</h5>
+                <p className="text-[9px] text-slate-500 font-semibold mt-1">Upload a screenshot or photo containing a wallet address QR code.</p>
+              </div>
+              <label className="px-4 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-750 text-slate-300 hover:text-white rounded-xl text-[10px] font-bold uppercase tracking-wider cursor-pointer transition-all inline-block">
+                Choose Image
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                />
+              </label>
+            </div>
+          )}
+
+          {/* Tab 3: Simulate Scanning */}
+          {scanMethod === 'simulate' && (
+            <div className="space-y-3">
+              <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-900 text-center">
+                <p className="text-[10px] text-slate-500 font-semibold">Select a mock wallet address below to simulate scanning it.</p>
+              </div>
+              
+              <div className="max-h-60 overflow-y-auto divide-y divide-slate-900/60 border border-slate-900 rounded-xl bg-slate-950">
+                {activeAddresses.length === 0 ? (
+                  <div className="p-6 text-center text-xs text-slate-500">No other active users found to simulate scan.</div>
+                ) : (
+                  activeAddresses.map(addr => (
+                    <div key={addr.wallet_address} className="p-3 hover:bg-slate-900/40 transition-colors flex items-center justify-between">
+                      <div>
+                        <span className="block text-xs font-bold text-slate-200">{addr.fullname}</span>
+                        <span className="block font-mono text-[9px] text-slate-500 truncate max-w-[200px] mt-0.5">{addr.wallet_address}</span>
+                      </div>
+                      <button
+                        onClick={() => handleSimulateScanSelect(addr.wallet_address)}
+                        className="px-2.5 py-1 bg-teal-650/80 hover:bg-teal-600 text-white rounded text-[9px] font-bold uppercase tracking-wider cursor-pointer"
+                      >
+                        Select
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
 
           <button
             onClick={() => setSimulateScanOpen(false)}
             className="w-full py-2.5 bg-slate-900 border border-slate-800 text-slate-400 hover:text-white rounded-xl text-xs font-bold uppercase cursor-pointer"
           >
-            Close Scanner
+            Cancel
           </button>
         </div>
       </Modal>

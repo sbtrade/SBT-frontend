@@ -13,7 +13,9 @@ import {
   Plus, 
   Eye,
   AlertTriangle,
-  Coins
+  Coins,
+  Copy,
+  Check
 } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
@@ -57,6 +59,13 @@ export default function AdminDashboard() {
 
   const [custodySuccessOpen, setCustodySuccessOpen] = useState(false);
   const [custodyTxDetails, setCustodyTxDetails] = useState(null);
+  const [copiedId, setCopiedId] = useState(null);
+
+  const handleCopyAddress = (address, reqId) => {
+    navigator.clipboard.writeText(address);
+    setCopiedId(reqId);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   const fetchQueues = async () => {
     setLoading(true);
@@ -493,7 +502,7 @@ export default function AdminDashboard() {
                 <thead>
                   <tr className="border-b border-slate-900 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                     <th className="pb-3 px-2">Sender</th>
-                    <th className="pb-3">Receiver ID</th>
+                    <th className="pb-3">Receiver ID / Address</th>
                     <th className="pb-3 text-right">Amount</th>
                     <th className="pb-3">Date</th>
                     <th className="pb-3 text-right px-2">Actions</th>
@@ -509,21 +518,43 @@ export default function AdminDashboard() {
                           <div className="font-bold text-slate-200">{t.sender_name}</div>
                           <div className="text-[10px] font-mono text-slate-500">{t.sender_user_id}</div>
                         </td>
-                        <td className="py-3.5 font-mono text-slate-300 uppercase">{t.receiver_user_id}</td>
+                        <td className="py-3.5 font-mono text-slate-300">
+                          {t.receiver_user_id === 'EXTERNAL' ? (
+                            <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/25 text-[9px] font-bold uppercase tracking-wider">
+                              EXTERNAL
+                            </span>
+                          ) : (
+                            <span className="uppercase text-slate-200">{t.receiver_user_id}</span>
+                          )}
+                          {t.receiver_wallet_address && (
+                            <div className="flex items-center gap-1.5 mt-1 font-mono text-[9px] text-slate-500 lowercase">
+                              <span className="truncate max-w-[150px]" title={t.receiver_wallet_address}>
+                                {t.receiver_wallet_address}
+                              </span>
+                              <button
+                                onClick={() => handleCopyAddress(t.receiver_wallet_address, t.id)}
+                                className="p-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-850 cursor-pointer transition-all"
+                                title="Copy recipient wallet address"
+                              >
+                                {copiedId === t.id ? <Check className="w-3 h-3 text-emerald-450" /> : <Copy className="w-3 h-3" />}
+                              </button>
+                            </div>
+                          )}
+                        </td>
                         <td className="py-3.5 text-right font-mono font-bold text-teal-400">{formatMoney(t.amount)}</td>
                         <td className="py-3.5 text-slate-500">{new Date(t.created_at).toLocaleDateString()}</td>
                         <td className="py-3.5 text-right px-2 space-x-2">
                           <button
                             onClick={() => handleTransferDecision(t.id, true)}
                             disabled={actionLoading}
-                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-bold uppercase cursor-pointer"
+                            className="px-2.5 py-1 bg-emerald-650 hover:bg-emerald-600 text-white border border-emerald-500/20 rounded text-[10px] font-bold uppercase cursor-pointer"
                           >
                             Approve
                           </button>
                           <button
                             onClick={() => handleTransferDecision(t.id, false)}
                             disabled={actionLoading}
-                            className="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-[10px] font-bold uppercase cursor-pointer"
+                            className="px-2.5 py-1 bg-rose-655 hover:bg-rose-600 text-white border border-rose-500/20 rounded text-[10px] font-bold uppercase cursor-pointer"
                           >
                             Reject
                           </button>
