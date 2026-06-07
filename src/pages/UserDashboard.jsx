@@ -19,6 +19,7 @@ export default function UserDashboard() {
   const [simulateScanOpen, setSimulateScanOpen] = useState(false);
   const [activeAddresses, setActiveAddresses] = useState([]);
   const [copied, setCopied] = useState(false);
+  const [selectedTx, setSelectedTx] = useState(null);
 
   // QR Scanning Refs and State
   const videoRef = useRef(null);
@@ -690,7 +691,12 @@ export default function UserDashboard() {
                     </tr>
                   ) : (
                     transactions.map((tx) => (
-                      <tr key={tx.id} className="hover:bg-slate-950/10 transition-colors">
+                      <tr 
+                        key={tx.id} 
+                        className="hover:bg-slate-950/20 transition-colors cursor-pointer active:scale-[0.99]"
+                        onClick={() => setSelectedTx(tx)}
+                        title="Click to view transaction receipt"
+                      >
                         <td className="py-3 px-2 font-mono text-slate-400 flex items-center gap-1.5">
                           {tx.id}
                           {tx.aml_flagged && (
@@ -960,6 +966,142 @@ export default function UserDashboard() {
         </div>
       </Modal>
 
+      {/* Transaction Details Receipt Modal */}
+      <Modal isOpen={!!selectedTx} onClose={() => setSelectedTx(null)} title="Transaction Receipt">
+        {selectedTx && (
+          <div className="flex flex-col items-center py-4 space-y-6">
+            
+            {/* Logo */}
+            <SbtLogo className="mb-1" />
+
+            {/* Amount */}
+            <div className="text-center space-y-1">
+              <span className="text-3xl font-black text-white tracking-tight">
+                {selectedTx.type === 'DEBIT' || selectedTx.type === 'TRANSFER' || selectedTx.type === 'WITHDRAWAL' ? '-' : '+'}
+                {formatMoney(selectedTx.amount)}
+              </span>
+              {selectedTx.type === 'WITHDRAWAL' && selectedTx.btc_amount && (
+                <span className="block text-xs font-mono text-slate-400 font-semibold">
+                  ≈ -{parseFloat(selectedTx.btc_amount).toFixed(6)} BTC
+                </span>
+              )}
+              <span className="block text-[9px] font-bold text-slate-500 uppercase tracking-widest">
+                {selectedTx.type}
+              </span>
+            </div>
+
+            {/* Detail Card */}
+            <div className="w-full bg-[#030712]/60 border border-slate-900 rounded-2xl p-5 space-y-4 shadow-inner">
+              {/* Date */}
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-500 font-semibold uppercase tracking-wider text-[10px]">Date</span>
+                <span className="text-slate-200 font-bold">
+                  {new Date(selectedTx.created_at).toLocaleString('en-US', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true
+                  })}
+                </span>
+              </div>
+
+              {/* Status */}
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-500 font-semibold uppercase tracking-wider text-[10px] flex items-center gap-1">
+                  Status
+                  <HelpCircle className="w-3.5 h-3.5 text-slate-500 shrink-0" title="Transaction state in database ledger" />
+                </span>
+                <div className="flex items-center">
+                  <StatusBadge status={selectedTx.status} />
+                </div>
+              </div>
+
+              {/* Recipient / Source */}
+              <div className="flex justify-between items-start text-xs pt-3 border-t border-slate-900/60">
+                <span className="text-slate-500 font-semibold uppercase tracking-wider text-[10px] mt-0.5">
+                  {selectedTx.type === 'DEPOSIT' || selectedTx.type === 'CREDIT' ? 'Source' : 'Recipient'}
+                </span>
+                <div className="text-right">
+                  {selectedTx.type === 'TRANSFER' ? (
+                    <div>
+                      <span className="block text-slate-200 font-bold">
+                        {selectedTx.receiver_id_str === 'EXTERNAL' ? 'External Recipient' : (selectedTx.receiver_id_str || 'External Address')}
+                      </span>
+                      {selectedTx.transaction_reference && (
+                        <span className="block font-mono text-[9px] text-teal-400 select-all break-all mt-0.5" title="Copy recipient wallet address">
+                          {selectedTx.transaction_reference}
+                        </span>
+                      )}
+                    </div>
+                  ) : selectedTx.type === 'WITHDRAWAL' ? (
+                    <span className="block font-mono text-[10px] text-slate-400 break-all select-all">
+                      {selectedTx.tx_hash ? `${selectedTx.tx_hash.substring(0, 12)}...${selectedTx.tx_hash.substring(selectedTx.tx_hash.length - 10)}` : 'Custody Address'}
+                    </span>
+                  ) : (
+                    <span className="block text-slate-200 font-bold uppercase tracking-wider text-[10px]">
+                      {selectedTx.payment_id || 'System Ledger'}
+                    </span>
+                  )}
+                </div>
+              </div>
+              
+              {/* Description */}
+              <div className="flex justify-between items-start text-xs pt-3 border-t border-slate-900/60">
+                <span className="text-slate-500 font-semibold uppercase tracking-wider text-[10px]">Description</span>
+                <span className="text-slate-400 font-normal max-w-[180px] text-right break-words">{selectedTx.description}</span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setSelectedTx(null)}
+              className="w-full py-2.5 bg-slate-900 border border-slate-850 hover:border-slate-800 text-slate-400 hover:text-white rounded-xl text-xs font-bold uppercase cursor-pointer transition-all"
+            >
+              Close Receipt
+            </button>
+          </div>
+        )}
+      </Modal>
+
     </div>
   );
 }
+
+// Interlocking curved logo component with glow drawn in responsive SVG
+const SbtLogo = ({ className = "w-16 h-16" }) => (
+  <div className={`flex flex-col items-center justify-center ${className}`}>
+    <svg viewBox="0 0 100 100" className="w-16 h-16">
+      <defs>
+        <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.8" />
+          <stop offset="100%" stopColor="#0284c7" stopOpacity="0" />
+        </radialGradient>
+        <linearGradient id="grad-teal" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#2dd4bf" />
+          <stop offset="100%" stopColor="#0f766e" />
+        </linearGradient>
+        <linearGradient id="grad-blue" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#0284c7" />
+          <stop offset="100%" stopColor="#1e3a8a" />
+        </linearGradient>
+      </defs>
+      
+      {/* Central glowing circular area */}
+      <circle cx="50" cy="50" r="16" fill="url(#glow)" />
+      <circle cx="50" cy="50" r="10" fill="none" stroke="#e2e8f0" strokeWidth="2.5" />
+      
+      {/* Four interlocking curved arcs */}
+      {/* Top arc */}
+      <path d="M 50 20 A 30 30 0 0 1 80 50 A 4 4 0 0 1 72 50 A 22 22 0 0 0 50 28 A 4 4 0 0 1 50 20 Z" fill="url(#grad-teal)" />
+      {/* Right arc */}
+      <path d="M 80 50 A 30 30 0 0 1 50 80 A 4 4 0 0 1 50 72 A 22 22 0 0 0 72 50 A 4 4 0 0 1 80 50 Z" fill="url(#grad-blue)" transform="rotate(90 50 50)" />
+      {/* Bottom arc */}
+      <path d="M 50 80 A 30 30 0 0 1 20 50 A 4 4 0 0 1 28 50 A 22 22 0 0 0 50 72 A 4 4 0 0 1 50 80 Z" fill="url(#grad-teal)" transform="rotate(180 50 50)" />
+      {/* Left arc */}
+      <path d="M 20 50 A 30 30 0 0 1 50 20 A 4 4 0 0 1 50 28 A 22 22 0 0 0 28 50 A 4 4 0 0 1 20 50 Z" fill="url(#grad-blue)" transform="rotate(270 50 50)" />
+    </svg>
+    <span className="text-xl font-black tracking-widest text-[#38bdf8] mt-2 font-sans">SBT</span>
+    <span className="text-[9px] font-bold tracking-[0.25em] text-slate-400 uppercase font-sans -mt-0.5">WALLET APP</span>
+  </div>
+);
