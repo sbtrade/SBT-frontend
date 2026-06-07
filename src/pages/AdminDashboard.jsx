@@ -18,6 +18,12 @@ import {
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
+const getFileUrl = (url) => {
+  if (!url) return '';
+  const base = API_BASE_URL.endsWith('/api') ? API_BASE_URL.slice(0, -4) : API_BASE_URL;
+  return `${base}${url}`;
+};
+
 export default function AdminDashboard() {
   const [adminWallet, setAdminWallet] = useState({ balance: '0.00', total_credits: '0.00', total_debits: '0.00' });
   
@@ -40,6 +46,7 @@ export default function AdminDashboard() {
   // Modal control states
   const [depositOpen, setDepositOpen] = useState(false);
   const [depositAmount, setDepositAmount] = useState('');
+  const [adjustAction, setAdjustAction] = useState('INCREASE'); // 'INCREASE' or 'DECREASE'
 
   const [credentialsOpen, setCredentialsOpen] = useState(false);
   const [credentials, setCredentials] = useState(null);
@@ -86,19 +93,19 @@ export default function AdminDashboard() {
     fetchQueues();
   }, []);
 
-  const handleAdminDeposit = async (e) => {
+  const handleAdminWalletAdjustment = async (e) => {
     e.preventDefault();
     setError('');
     setSuccess('');
     setActionLoading(true);
     try {
-      const res = await api.post('/admin/deposit', { amount: depositAmount });
+      const res = await api.post('/admin/wallet/adjust', { amount: depositAmount, action: adjustAction });
       setSuccess(res.data.message);
       setDepositAmount('');
       setDepositOpen(false);
       fetchQueues();
     } catch (err) {
-      setError(err.response?.data?.error || 'Deposit failed.');
+      setError(err.response?.data?.error || 'Failed to adjust wallet balance.');
     } finally {
       setActionLoading(false);
     }
@@ -290,11 +297,11 @@ export default function AdminDashboard() {
           </div>
 
           <button
-            onClick={() => setDepositOpen(true)}
-            className="px-4 py-2.5 bg-teal-600 hover:bg-teal-500 active:scale-[0.98] text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-lg flex items-center justify-center gap-1.5 cursor-pointer transition-all shrink-0"
+            onClick={() => { setDepositOpen(true); setAdjustAction('INCREASE'); }}
+            className="px-4 py-2.5 bg-teal-650 hover:bg-teal-600 active:scale-[0.98] text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-lg flex items-center justify-center gap-1.5 cursor-pointer transition-all shrink-0 border border-teal-500/20"
           >
-            <Plus className="w-4.5 h-4.5" />
-            Deposit Funds
+            <Coins className="w-4 h-4 text-teal-450 shrink-0" />
+            Adjust Balance
           </button>
         </div>
       </div>
@@ -627,11 +634,39 @@ export default function AdminDashboard() {
         )}
       </div>
 
-      {/* MODAL 1: Admin Deposit to Master Wallet */}
-      <Modal isOpen={depositOpen} onClose={() => setDepositOpen(false)} title="Deposit Funds to Master Wallet">
-        <form onSubmit={handleAdminDeposit} className="space-y-4">
+      {/* MODAL 1: Admin Adjust Master Wallet Balance */}
+      <Modal isOpen={depositOpen} onClose={() => setDepositOpen(false)} title="Adjust Master Wallet Balance">
+        <form onSubmit={handleAdminWalletAdjustment} className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Adjustment Type</label>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setAdjustAction('INCREASE')}
+                className={`py-2 rounded-xl text-xs font-bold uppercase tracking-wider border transition-all cursor-pointer ${
+                  adjustAction === 'INCREASE' 
+                    ? 'bg-teal-950/20 border-teal-500/40 text-teal-400 font-bold' 
+                    : 'bg-slate-950 border-slate-900 text-slate-500 hover:text-slate-300'
+                }`}
+              >
+                Increase (Deposit)
+              </button>
+              <button
+                type="button"
+                onClick={() => setAdjustAction('DECREASE')}
+                className={`py-2 rounded-xl text-xs font-bold uppercase tracking-wider border transition-all cursor-pointer ${
+                  adjustAction === 'DECREASE' 
+                    ? 'bg-rose-950/20 border-rose-500/40 text-rose-455 font-bold' 
+                    : 'bg-slate-950 border-slate-900 text-slate-500 hover:text-rose-400'
+                }`}
+              >
+                Decrease (Withdraw)
+              </button>
+            </div>
+          </div>
+
           <div className="space-y-1.5">
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Deposit Amount (USD)</label>
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Adjustment Amount (USD)</label>
             <input
               type="number"
               step="0.01"
@@ -645,9 +680,11 @@ export default function AdminDashboard() {
           <button
             type="submit"
             disabled={actionLoading}
-            className="w-full py-2.5 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider active:scale-[0.98] disabled:opacity-50 cursor-pointer transition-all"
+            className={`w-full py-2.5 text-white rounded-xl text-xs font-bold uppercase tracking-wider active:scale-[0.98] disabled:opacity-50 cursor-pointer transition-all ${
+              adjustAction === 'INCREASE' ? 'bg-teal-650 hover:bg-teal-600' : 'bg-rose-655 hover:bg-rose-600'
+            }`}
           >
-            {actionLoading ? 'Depositing...' : 'Confirm Deposit'}
+            {actionLoading ? 'Adjusting...' : 'Confirm Balance Adjustment'}
           </button>
         </form>
       </Modal>
@@ -701,12 +738,16 @@ export default function AdminDashboard() {
               <div className="space-y-1.5">
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block text-center">Front ID Document</span>
                 <a 
-                  href={`${API_BASE_URL}${activeKyc.front_id_url}`} 
+                  href={getFileUrl(activeKyc.front_id_url)} 
                   target="_blank" 
                   rel="noreferrer"
-                  className="block border border-slate-900 rounded-xl overflow-hidden aspect-video bg-slate-950 hover:border-slate-750 transition-all relative group"
+                  className="block border border-slate-900 rounded-xl overflow-hidden aspect-video bg-slate-950 hover:border-slate-750 transition-all relative group flex items-center justify-center"
                 >
-                  <img src={`${API_BASE_URL}${activeKyc.front_id_url}`} alt="Front ID" className="w-full h-full object-cover" onError={(e) => { e.target.style.display = 'none'; }} />
+                  <img src={getFileUrl(activeKyc.front_id_url)} alt="Front ID" className="w-full h-full object-cover" onError={(e) => { e.target.style.display = 'none'; const f = e.target.parentNode.querySelector('.fallback-msg'); if (f) f.style.display = 'flex'; }} />
+                  <div className="fallback-msg hidden absolute inset-0 flex-col items-center justify-center p-2 text-center text-[10px] text-slate-500">
+                    <span>Failed to load image</span>
+                    <span className="text-teal-450 mt-1 font-bold">Open Original</span>
+                  </div>
                   <div className="absolute inset-0 bg-slate-950/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                     <span className="text-[10px] text-white font-bold uppercase tracking-wider">Open Original</span>
                   </div>
@@ -716,12 +757,16 @@ export default function AdminDashboard() {
               <div className="space-y-1.5">
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block text-center">Back ID Document</span>
                 <a 
-                  href={`${API_BASE_URL}${activeKyc.back_id_url}`} 
+                  href={getFileUrl(activeKyc.back_id_url)} 
                   target="_blank" 
                   rel="noreferrer"
-                  className="block border border-slate-900 rounded-xl overflow-hidden aspect-video bg-slate-950 hover:border-slate-750 transition-all relative group"
+                  className="block border border-slate-900 rounded-xl overflow-hidden aspect-video bg-slate-950 hover:border-slate-750 transition-all relative group flex items-center justify-center"
                 >
-                  <img src={`${API_BASE_URL}${activeKyc.back_id_url}`} alt="Back ID" className="w-full h-full object-cover" onError={(e) => { e.target.style.display = 'none'; }} />
+                  <img src={getFileUrl(activeKyc.back_id_url)} alt="Back ID" className="w-full h-full object-cover" onError={(e) => { e.target.style.display = 'none'; const f = e.target.parentNode.querySelector('.fallback-msg'); if (f) f.style.display = 'flex'; }} />
+                  <div className="fallback-msg hidden absolute inset-0 flex-col items-center justify-center p-2 text-center text-[10px] text-slate-500">
+                    <span>Failed to load image</span>
+                    <span className="text-teal-450 mt-1 font-bold">Open Original</span>
+                  </div>
                   <div className="absolute inset-0 bg-slate-950/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                     <span className="text-[10px] text-white font-bold uppercase tracking-wider">Open Original</span>
                   </div>

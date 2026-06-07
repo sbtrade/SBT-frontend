@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import StatusBadge from '../components/StatusBadge';
-import { Search, Users, RefreshCw, UserX, UserCheck, Trash2 } from 'lucide-react';
+import Modal from '../components/Modal';
+import { Search, Users, RefreshCw, UserX, UserCheck, Trash2, Coins } from 'lucide-react';
 
 export default function ManageUsers() {
   const [users, setUsers] = useState([]);
@@ -10,6 +11,10 @@ export default function ManageUsers() {
   const [actionLoading, setActionLoading] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
+  const [adjustModalOpen, setAdjustModalOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [adjustAmount, setAdjustAmount] = useState('');
+  const [adjustAction, setAdjustAction] = useState('INCREASE');
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -59,6 +64,30 @@ export default function ManageUsers() {
       fetchUsers();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to delete user.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleAdjustUserBalance = async (e) => {
+    e.preventDefault();
+    if (!selectedUser) return;
+    setError('');
+    setSuccess('');
+    setActionLoading(true);
+    try {
+      const res = await api.post('/admin/users/adjust-balance', {
+        id: selectedUser.id,
+        amount: adjustAmount,
+        action: adjustAction
+      });
+      setSuccess(res.data.message);
+      setAdjustModalOpen(false);
+      setAdjustAmount('');
+      setSelectedUser(null);
+      fetchUsers();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to adjust user wallet balance.');
     } finally {
       setActionLoading(false);
     }
@@ -165,12 +194,20 @@ export default function ManageUsers() {
                       </td>
                       <td className="py-3.5 text-right px-2 space-x-2 shrink-0">
                         <button
+                          onClick={() => { setSelectedUser(u); setAdjustAmount(''); setAdjustAction('INCREASE'); setAdjustModalOpen(true); }}
+                          disabled={actionLoading}
+                          className="px-2 py-1 bg-teal-655/90 hover:bg-teal-600 text-white rounded text-[10px] font-bold uppercase transition-all cursor-pointer inline-flex items-center gap-1"
+                        >
+                          <Coins className="w-3.5 h-3.5 shrink-0" />
+                          Adjust
+                        </button>
+                        <button
                           onClick={() => handleSuspendUser(u.id, u.status === 'SUSPENDED')}
                           disabled={actionLoading}
                           className={`px-2 py-1 rounded text-[10px] font-bold uppercase transition-all cursor-pointer ${
                             u.status === 'SUSPENDED'
-                              ? 'bg-emerald-600/90 hover:bg-emerald-500 text-white'
-                              : 'bg-amber-600/90 hover:bg-amber-500 text-white'
+                              ? 'bg-emerald-650/90 hover:bg-emerald-600 text-white'
+                              : 'bg-amber-655/90 hover:bg-amber-600 text-white'
                           }`}
                         >
                           {u.status === 'SUSPENDED' ? 'Activate' : 'Suspend'}
@@ -178,7 +215,7 @@ export default function ManageUsers() {
                         <button
                           onClick={() => handleDeleteUser(u.id, u.user_id)}
                           disabled={actionLoading}
-                          className="px-2 py-1 bg-rose-600/90 hover:bg-rose-500 text-white rounded text-[10px] font-bold uppercase transition-all cursor-pointer"
+                          className="px-2 py-1 bg-rose-655/90 hover:bg-rose-600 text-white rounded text-[10px] font-bold uppercase transition-all cursor-pointer"
                         >
                           Delete
                         </button>
@@ -191,6 +228,70 @@ export default function ManageUsers() {
           </div>
         )}
       </div>
+
+      {/* User Balance Adjustment Modal */}
+      <Modal isOpen={adjustModalOpen} onClose={() => { setAdjustModalOpen(false); setSelectedUser(null); }} title="Adjust Customer Wallet Balance">
+        {selectedUser && (
+          <form onSubmit={handleAdjustUserBalance} className="space-y-4">
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 space-y-1">
+              <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Customer Details</span>
+              <span className="block font-bold text-slate-200 text-sm">{selectedUser.fullname}</span>
+              <span className="block font-mono text-[10px] text-slate-400 mt-0.5">User ID: {selectedUser.user_id}</span>
+              <span className="block font-mono text-[10px] text-teal-450 mt-0.5">Current Balance: {formatMoney(selectedUser.balance)}</span>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Adjustment Type</label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setAdjustAction('INCREASE')}
+                  className={`py-2 rounded-xl text-xs font-bold uppercase tracking-wider border transition-all cursor-pointer ${
+                    adjustAction === 'INCREASE' 
+                      ? 'bg-teal-950/20 border-teal-500/40 text-teal-400 font-bold' 
+                      : 'bg-slate-950 border-slate-900 text-slate-500 hover:text-slate-350'
+                  }`}
+                >
+                  Increase (Credit)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdjustAction('DECREASE')}
+                  className={`py-2 rounded-xl text-xs font-bold uppercase tracking-wider border transition-all cursor-pointer ${
+                    adjustAction === 'DECREASE' 
+                      ? 'bg-rose-950/20 border-rose-500/40 text-rose-455 font-bold' 
+                      : 'bg-slate-950 border-slate-900 text-slate-500 hover:text-rose-400'
+                  }`}
+                >
+                  Decrease (Debit)
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Adjustment Amount (USD)</label>
+              <input
+                type="number"
+                step="0.01"
+                required
+                placeholder="0.00"
+                value={adjustAmount}
+                onChange={(e) => setAdjustAmount(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-850 px-3.5 py-2.5 rounded-xl text-sm font-mono text-white"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={actionLoading}
+              className={`w-full py-2.5 text-white rounded-xl text-xs font-bold uppercase tracking-wider active:scale-[0.98] disabled:opacity-50 cursor-pointer transition-all ${
+                adjustAction === 'INCREASE' ? 'bg-teal-650 hover:bg-teal-600' : 'bg-rose-655 hover:bg-rose-600'
+              }`}
+            >
+              {actionLoading ? 'Adjusting...' : 'Confirm Balance Adjustment'}
+            </button>
+          </form>
+        )}
+      </Modal>
 
     </div>
   );

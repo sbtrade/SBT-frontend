@@ -1,15 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import StatusBadge from '../components/StatusBadge';
-import { ArrowUpRight, ArrowDownLeft, Send, Landmark, HelpCircle, RefreshCw, LandmarkIcon, AlertTriangle } from 'lucide-react';
+import Modal from '../components/Modal';
+import { ArrowUpRight, ArrowDownLeft, Send, Landmark, HelpCircle, RefreshCw, LandmarkIcon, AlertTriangle, Copy, Check, Camera, Scan, User } from 'lucide-react';
 
 export default function UserDashboard() {
-  const [balanceData, setBalanceData] = useState({ balance: '0.00', total_credits: '0.00', total_debits: '0.00', kyc_status: 'NOT_SUBMITTED' });
+  const [balanceData, setBalanceData] = useState({ balance: '0.00', total_credits: '0.00', total_debits: '0.00', kyc_status: 'NOT_SUBMITTED', wallet_address: null });
   const [transactions, setTransactions] = useState([]);
   const [requests, setRequests] = useState([]);
 
   // Forms state
   const [activeForm, setActiveForm] = useState('none'); // 'deposit', 'fund', 'transfer', 'withdraw', 'none'
+  const [transferWalletAddress, setTransferWalletAddress] = useState('');
+  const [verifiedReceiver, setVerifiedReceiver] = useState(null);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verificationError, setVerificationError] = useState('');
+  const [confirmSendOpen, setConfirmSendOpen] = useState(false);
+  const [simulateScanOpen, setSimulateScanOpen] = useState(false);
+  const [activeAddresses, setActiveAddresses] = useState([]);
+  const [copied, setCopied] = useState(false);
   
   // Real Money Deposit State
   const [depositAmount, setDepositAmount] = useState('');
@@ -89,23 +98,65 @@ export default function UserDashboard() {
     }
   };
 
+  const handleVerifyReceiver = async (addressToVerify) => {
+    const addr = (addressToVerify || transferWalletAddress).trim();
+    if (!addr) return;
+    setIsVerifying(true);
+    setVerificationError('');
+    setVerifiedReceiver(null);
+    try {
+      const res = await api.post('/wallet/verify-receiver', { wallet_address: addr });
+      setVerifiedReceiver(res.data.receiver);
+    } catch (err) {
+      setVerificationError(err.response?.data?.error || 'Failed to verify wallet address.');
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
   const handleTransferRequest = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
+    if (!verifiedReceiver) {
+      setError('Please verify the recipient wallet address first.');
+      return;
+    }
+    
     setError('');
     setSuccess('');
     setFormLoading(true);
     try {
-      const res = await api.post('/wallet/transfer-request', { receiver_user_id: transferUserId.trim(), amount: transferAmount });
+      const res = await api.post('/wallet/transfer-request', { 
+        receiver_wallet_address: verifiedReceiver.wallet_address, 
+        amount: transferAmount 
+      });
       setSuccess(res.data.message);
-      setTransferUserId('');
+      setTransferWalletAddress('');
       setTransferAmount('');
+      setVerifiedReceiver(null);
       setActiveForm('none');
+      setConfirmSendOpen(false);
       fetchData();
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to submit transfer request.');
     } finally {
       setFormLoading(false);
     }
+  };
+
+  const openSimulateScan = async () => {
+    setSimulateScanOpen(true);
+    try {
+      const res = await api.get('/wallet/active-addresses');
+      setActiveAddresses(res.data);
+    } catch (err) {
+      console.error('Failed to load active addresses:', err);
+    }
+  };
+
+  const handleSimulateScanSelect = (address) => {
+    setTransferWalletAddress(address);
+    setSimulateScanOpen(false);
+    handleVerifyReceiver(address);
   };
 
   const handleWithdrawalRequest = async (e) => {
@@ -168,7 +219,7 @@ export default function UserDashboard() {
       )}
 
       {/* 1. Wallet overview cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-[#0a122c] border border-slate-900/60 rounded-3xl p-6 relative overflow-hidden shadow-lg">
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-teal-500 to-indigo-500" />
           <span className="text-[10px] font-bold text-teal-400 uppercase tracking-widest block mb-2">Available Balance</span>
@@ -187,6 +238,35 @@ export default function UserDashboard() {
         <div className="bg-[#0a122c] border border-slate-900/60 rounded-3xl p-6 shadow-sm">
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">Total Disbursed (Debits)</span>
           <h3 className="text-3xl font-extrabold text-rose-400 tracking-tight">{formatMoney(balanceData.total_debits)}</h3>
+        </div>
+
+        <div className="bg-[#0a122c] border border-slate-900/60 rounded-3xl p-6 shadow-sm flex flex-col justify-between items-center text-center relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-teal-500 to-indigo-500" />
+          <span className="text-[10px] font-bold text-teal-450 uppercase tracking-widest block mb-2 w-full text-left">My Wallet Address</span>
+          {balanceData.wallet_address ? (
+            <div className="flex flex-col items-center gap-3 w-full">
+              <div className="p-1.5 bg-white rounded-2xl flex items-center justify-center">
+                <img 
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=${balanceData.wallet_address}&color=0a122c`} 
+                  alt="Wallet QR Code" 
+                  className="w-20 h-20" 
+                />
+              </div>
+              <div className="w-full">
+                <span className="block font-mono text-[9px] bg-slate-950 px-2 py-1.5 rounded-xl text-slate-350 border border-slate-900 select-all break-all cursor-pointer hover:border-slate-800 hover:text-white flex items-center justify-center gap-1" title="Click to copy wallet address" onClick={() => {
+                  navigator.clipboard.writeText(balanceData.wallet_address);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }}>
+                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-450 shrink-0" /> : <Copy className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
+                  {balanceData.wallet_address}
+                </span>
+                <span className="text-[8px] text-slate-500 font-semibold block mt-1">Click address to copy</span>
+              </div>
+            </div>
+          ) : (
+            <span className="text-xs text-slate-555 py-8">Generating address...</span>
+          )}
         </div>
       </div>
 
@@ -333,38 +413,87 @@ export default function UserDashboard() {
 
           {/* TRANSFER FORM */}
           {activeForm === 'transfer' && (
-            <form onSubmit={handleTransferRequest} className="space-y-4 max-w-md">
+            <div className="space-y-4 max-w-md">
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Recipient User ID</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. USR1002"
-                  value={transferUserId}
-                  onChange={(e) => setTransferUserId(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-850 px-3.5 py-2 rounded-xl text-sm font-mono uppercase"
-                />
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Recipient Wallet Address</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. sbt_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    value={transferWalletAddress}
+                    onChange={(e) => {
+                      setTransferWalletAddress(e.target.value);
+                      if (verifiedReceiver) setVerifiedReceiver(null);
+                      if (verificationError) setVerificationError('');
+                    }}
+                    className="flex-1 bg-slate-950 border border-slate-850 px-3.5 py-2 rounded-xl text-sm font-mono text-slate-200 focus:outline-none focus:border-teal-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={openSimulateScan}
+                    className="px-3.5 py-2 bg-slate-900 border border-slate-800 hover:border-slate-750 text-slate-400 hover:text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 shrink-0 cursor-pointer"
+                    title="Simulate scanning a wallet QR Code"
+                  >
+                    <Scan className="w-4 h-4 text-teal-400" />
+                    Scan QR
+                  </button>
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Transfer Amount (USD)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  required
-                  placeholder="0.00"
-                  value={transferAmount}
-                  onChange={(e) => setTransferAmount(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-850 px-3.5 py-2 rounded-xl text-sm font-mono"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={formLoading}
-                className="px-5 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider active:scale-[0.98] disabled:opacity-50 cursor-pointer transition-all"
-              >
-                {formLoading ? 'Submitting...' : 'Submit Transfer'}
-              </button>
-            </form>
+
+              {verificationError && (
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-455 text-[11px] font-semibold animate-shake">
+                  {verificationError}
+                </div>
+              )}
+
+              {verifiedReceiver && (
+                <div className="p-4 rounded-xl bg-teal-950/20 border border-teal-500/20 text-teal-400 text-xs font-semibold flex items-center gap-3 animate-in fade-in duration-200">
+                  <User className="w-5 h-5 text-teal-400 shrink-0" />
+                  <div>
+                    <span className="block text-[10px] text-slate-500 font-bold uppercase tracking-wider">Verified Recipient</span>
+                    <span className="block text-slate-200 font-extrabold text-sm">{verifiedReceiver.fullname}</span>
+                    <span className="block font-mono text-[10px] text-slate-400 mt-0.5">ID: {verifiedReceiver.user_id}</span>
+                  </div>
+                </div>
+              )}
+
+              {!verifiedReceiver && (
+                <button
+                  type="button"
+                  onClick={() => handleVerifyReceiver()}
+                  disabled={isVerifying || !transferWalletAddress.trim()}
+                  className="w-full py-2.5 bg-teal-700/60 hover:bg-teal-650 text-white rounded-xl text-xs font-bold uppercase tracking-wider disabled:opacity-50 cursor-pointer transition-all flex items-center justify-center gap-1.5"
+                >
+                  {isVerifying ? 'Verifying Address...' : 'Verify Address'}
+                </button>
+              )}
+
+              {verifiedReceiver && (
+                <div className="space-y-4 animate-in slide-in-from-top-2 duration-200">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Transfer Amount (USD)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      required
+                      placeholder="0.00"
+                      value={transferAmount}
+                      onChange={(e) => setTransferAmount(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-850 px-3.5 py-2 rounded-xl text-sm font-mono text-slate-200"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmSendOpen(true)}
+                    disabled={formLoading || !transferAmount || parseFloat(transferAmount) <= 0}
+                    className="w-full py-2.5 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider active:scale-[0.98] disabled:opacity-50 cursor-pointer transition-all"
+                  >
+                    Send Transfer
+                  </button>
+                </div>
+              )}
+            </div>
           )}
 
           {/* BITCOIN WITHDRAWAL FORM */}
@@ -534,6 +663,97 @@ export default function UserDashboard() {
         </div>
 
       </div>
+
+      {/* Confirmation Modal */}
+      <Modal isOpen={confirmSendOpen} onClose={() => setConfirmSendOpen(false)} title="Confirm Fund Transfer">
+        {verifiedReceiver && (
+          <div className="space-y-4">
+            <div className="p-4 bg-amber-500/5 border border-amber-500/10 rounded-xl flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <div className="text-xs text-slate-350">
+                <p className="font-bold text-amber-400 uppercase tracking-wide">Verification Shield Active</p>
+                <p className="mt-1">Please verify the recipient details below. Once confirmed, this transaction will be submitted to the ledger for administrative approval.</p>
+              </div>
+            </div>
+
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 space-y-3">
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div>
+                  <span className="text-[10px] text-slate-500 uppercase font-semibold">Recipient Name</span>
+                  <span className="block font-bold text-slate-200 mt-0.5">{verifiedReceiver.fullname}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-500 uppercase font-semibold">Recipient User ID</span>
+                  <span className="block font-mono font-bold text-slate-200 mt-0.5">{verifiedReceiver.user_id}</span>
+                </div>
+              </div>
+              <div className="pt-2 border-t border-slate-900">
+                <span className="text-[10px] text-slate-500 uppercase font-semibold block">Recipient Wallet Address</span>
+                <span className="block font-mono text-[9px] text-teal-400 mt-0.5 break-all">{verifiedReceiver.wallet_address}</span>
+              </div>
+              <div className="pt-2 border-t border-slate-900 text-center">
+                <span className="text-[10px] text-slate-500 uppercase font-semibold block">Transfer Amount</span>
+                <span className="text-2xl font-black text-white">{formatMoney(transferAmount)}</span>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmSendOpen(false)}
+                className="flex-1 py-2.5 bg-slate-900 border border-slate-800 text-slate-400 hover:text-white rounded-xl text-xs font-bold uppercase cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleTransferRequest}
+                disabled={formLoading}
+                className="flex-1 py-2.5 bg-teal-600 hover:bg-teal-500 text-white rounded-xl text-xs font-bold uppercase active:scale-[0.98] cursor-pointer"
+              >
+                {formLoading ? 'Submitting...' : 'Confirm & Send'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Simulated QR Scanner Modal */}
+      <Modal isOpen={simulateScanOpen} onClose={() => setSimulateScanOpen(false)} title="Simulate QR Code Scan">
+        <div className="space-y-4">
+          <div className="p-4 bg-slate-950/60 rounded-xl border border-slate-900 text-center">
+            <Camera className="w-8 h-8 text-teal-400 mx-auto mb-2 animate-pulse" />
+            <h5 className="text-xs font-bold text-slate-200 uppercase tracking-wider">Simulated Camera Viewfinder</h5>
+            <p className="text-[10px] text-slate-500 font-semibold mt-1">Select an active user wallet to simulate scanning their QR code.</p>
+          </div>
+
+          <div className="max-h-60 overflow-y-auto divide-y divide-slate-900/60 border border-slate-900 rounded-xl bg-slate-950">
+            {activeAddresses.length === 0 ? (
+              <div className="p-6 text-center text-xs text-slate-500">No other active users found to simulate scan.</div>
+            ) : (
+              activeAddresses.map(addr => (
+                <div key={addr.wallet_address} className="p-3 hover:bg-slate-900/40 transition-colors flex items-center justify-between">
+                  <div>
+                    <span className="block text-xs font-bold text-slate-200">{addr.fullname}</span>
+                    <span className="block font-mono text-[9px] text-slate-500 truncate max-w-[200px] mt-0.5">{addr.wallet_address}</span>
+                  </div>
+                  <button
+                    onClick={() => handleSimulateScanSelect(addr.wallet_address)}
+                    className="px-2.5 py-1 bg-teal-650/80 hover:bg-teal-600 text-white rounded text-[9px] font-bold uppercase tracking-wider cursor-pointer"
+                  >
+                    Scan QR
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+
+          <button
+            onClick={() => setSimulateScanOpen(false)}
+            className="w-full py-2.5 bg-slate-900 border border-slate-800 text-slate-400 hover:text-white rounded-xl text-xs font-bold uppercase cursor-pointer"
+          >
+            Close Scanner
+          </button>
+        </div>
+      </Modal>
 
     </div>
   );
