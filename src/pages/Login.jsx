@@ -303,7 +303,7 @@ export default function Login({ onLoginSuccess }) {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. USR1001, ADMIN001"
+                  placeholder=""
                   value={userId}
                   onChange={(e) => setUserId(e.target.value)}
                   className="w-full bg-[#020617] border border-slate-800 focus:border-teal-500 text-white pl-11 pr-4 py-3 rounded-xl text-sm transition-all font-mono"
