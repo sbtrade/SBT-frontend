@@ -2,7 +2,15 @@ import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import StatusBadge from '../components/StatusBadge';
 import Modal from '../components/Modal';
-import { Search, Users, RefreshCw, UserX, UserCheck, Trash2, Coins } from 'lucide-react';
+import { Search, Users, RefreshCw, UserX, UserCheck, Trash2, Coins, FileText, Eye, AlertTriangle } from 'lucide-react';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
+const getFileUrl = (url) => {
+  if (!url) return '';
+  const base = API_BASE_URL.endsWith('/api') ? API_BASE_URL.slice(0, -4) : API_BASE_URL;
+  return `${base}${url}`;
+};
 
 export default function ManageUsers() {
   const [users, setUsers] = useState([]);
@@ -15,6 +23,12 @@ export default function ManageUsers() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [adjustAmount, setAdjustAmount] = useState('');
   const [adjustAction, setAdjustAction] = useState('INCREASE');
+
+  // KYC view states
+  const [kycModalOpen, setKycModalOpen] = useState(false);
+  const [kycLoading, setKycLoading] = useState(false);
+  const [userKyc, setUserKyc] = useState(null);
+  const [kycError, setKycError] = useState('');
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -66,6 +80,23 @@ export default function ManageUsers() {
       setError(err.response?.data?.error || 'Failed to delete user.');
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handleViewKyc = async (user) => {
+    setSelectedUser(user);
+    setKycError('');
+    setUserKyc(null);
+    setKycLoading(true);
+    setKycModalOpen(true);
+    try {
+      const res = await api.get(`/admin/users/${user.id}/kyc`);
+      setUserKyc(res.data);
+    } catch (err) {
+      console.error('Fetch user KYC error:', err);
+      setKycError(err.response?.data?.error || 'No KYC documents found for this user.');
+    } finally {
+      setKycLoading(false);
     }
   };
 
@@ -194,6 +225,14 @@ export default function ManageUsers() {
                       </td>
                       <td className="py-3.5 text-right px-2 space-x-2 shrink-0">
                         <button
+                          onClick={() => handleViewKyc(u)}
+                          disabled={actionLoading}
+                          className="px-2 py-1 bg-indigo-650/90 hover:bg-indigo-600 text-white rounded text-[10px] font-bold uppercase transition-all cursor-pointer inline-flex items-center gap-1"
+                        >
+                          <FileText className="w-3.5 h-3.5 shrink-0" />
+                          KYC
+                        </button>
+                        <button
                           onClick={() => { setSelectedUser(u); setAdjustAmount(''); setAdjustAction('INCREASE'); setAdjustModalOpen(true); }}
                           disabled={actionLoading}
                           className="px-2 py-1 bg-teal-655/90 hover:bg-teal-600 text-white rounded text-[10px] font-bold uppercase transition-all cursor-pointer inline-flex items-center gap-1"
@@ -290,6 +329,86 @@ export default function ManageUsers() {
               {actionLoading ? 'Adjusting...' : 'Confirm Balance Adjustment'}
             </button>
           </form>
+        )}
+      </Modal>
+
+      {/* User KYC View Modal */}
+      <Modal isOpen={kycModalOpen} onClose={() => { setKycModalOpen(false); setSelectedUser(null); setUserKyc(null); }} title="Customer KYC Identification Documents">
+        {selectedUser && (
+          <div className="space-y-4">
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 space-y-1">
+              <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Customer Details</span>
+              <span className="block font-bold text-slate-200 text-sm">{selectedUser.fullname}</span>
+              <span className="block font-mono text-[10px] text-slate-400 mt-0.5">User ID: {selectedUser.user_id}</span>
+              <span className="block font-mono text-[10px] text-teal-450 mt-0.5">Email: {selectedUser.email}</span>
+            </div>
+
+            {kycLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="w-6 h-6 border-2 border-teal-500/30 border-t-teal-500 rounded-full animate-spin" />
+              </div>
+            ) : kycError ? (
+              <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/25 text-rose-350 text-xs font-semibold text-center leading-relaxed">
+                {kycError}
+              </div>
+            ) : userKyc ? (
+              <div className="space-y-4">
+                <div className="p-3 bg-slate-900 border border-slate-850 rounded-xl flex items-center justify-between text-xs">
+                  <span className="font-semibold text-slate-350">Verification Status:</span>
+                  <StatusBadge status={userKyc.status} />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-450 uppercase block mb-1.5 text-center">Front side ID</span>
+                    <div className="border border-slate-900 bg-slate-950 rounded-xl overflow-hidden aspect-video flex items-center justify-center relative p-1">
+                      <img 
+                        src={getFileUrl(userKyc.front_id_url)} 
+                        alt="Front ID Document" 
+                        className="max-h-full max-w-full rounded object-contain shadow"
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                          e.target.nextSibling.style.display = 'flex';
+                        }}
+                      />
+                      <div className="hidden absolute inset-0 flex items-center justify-center text-slate-500 text-[10px] font-semibold flex-col gap-1">
+                        <AlertTriangle className="w-5 h-5 text-slate-600" />
+                        Image loading failed
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-450 uppercase block mb-1.5 text-center">Back side ID</span>
+                    <div className="border border-slate-900 bg-slate-950 rounded-xl overflow-hidden aspect-video flex items-center justify-center relative p-1">
+                      <img 
+                        src={getFileUrl(userKyc.back_id_url)} 
+                        alt="Back ID Document" 
+                        className="max-h-full max-w-full rounded object-contain shadow"
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                          e.target.nextSibling.style.display = 'flex';
+                        }}
+                      />
+                      <div className="hidden absolute inset-0 flex items-center justify-center text-slate-500 text-[10px] font-semibold flex-col gap-1">
+                        <AlertTriangle className="w-5 h-5 text-slate-600" />
+                        Image loading failed
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {userKyc.remarks && (
+                  <div className="p-3.5 bg-slate-950 rounded-xl border border-slate-900 text-xs">
+                    <span className="block text-[9px] font-bold text-slate-500 uppercase tracking-wide mb-1">Assessor Remarks</span>
+                    <p className="text-slate-350 font-semibold leading-relaxed font-mono">{userKyc.remarks}</p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-555 text-center py-4 font-semibold">No KYC record available.</p>
+            )}
+          </div>
         )}
       </Modal>
 

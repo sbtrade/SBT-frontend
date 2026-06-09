@@ -7,7 +7,7 @@ export default function StatusBadge({ status }) {
 
   if (normalizedStatus === 'ACTIVE' || normalizedStatus === 'APPROVED' || normalizedStatus === 'COMPLETED') {
     colors = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
-  } else if (normalizedStatus === 'REJECTED' || normalizedStatus === 'SUSPENDED' || normalizedStatus === 'FAILED') {
+  } else if (normalizedStatus === 'REJECTED' || normalizedStatus === 'SUSPENDED' || normalizedStatus === 'FAILED' || normalizedStatus === 'DELETED') {
     colors = 'bg-rose-500/10 text-rose-400 border-rose-500/20';
   } else if (normalizedStatus === 'PENDING_APPROVAL' || normalizedStatus === 'PASSWORD_RESET_PENDING') {
     colors = 'bg-amber-500/10 text-amber-400 border-amber-500/20';

@@ -36,6 +36,7 @@ export default function AdminDashboard() {
   const [transfers, setTransfers] = useState([]);
   const [withdrawals, setWithdrawals] = useState([]);
   const [resets, setResets] = useState([]);
+  const [users, setUsers] = useState([]);
 
   // Active queue tab state
   const [activeTab, setActiveTab] = useState('registrations');
@@ -90,6 +91,9 @@ export default function AdminDashboard() {
 
       const rRes = await api.get('/admin/password-resets');
       setResets(rRes.data);
+
+      const uRes = await api.get('/admin/users');
+      setUsers(uRes.data);
 
     } catch (err) {
       console.error('Fetch queues error:', err);
@@ -292,26 +296,45 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* 1. Admin Master Wallet card */}
-      <div className="bg-[#0a122c] border border-slate-900/60 rounded-3xl p-6 relative overflow-hidden shadow-lg">
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-teal-500 to-indigo-500" />
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 text-teal-455">
-              <Wallet className="w-4 h-4" />
-              <span className="text-[10px] font-bold uppercase tracking-widest block">Admin Master Wallet Balance</span>
+      {/* 1. Stats Cards Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="bg-[#0a122c] border border-slate-900/60 rounded-3xl p-6 relative overflow-hidden shadow-lg lg:col-span-2">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-teal-500 to-indigo-500" />
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-teal-455">
+                <Wallet className="w-4 h-4" />
+                <span className="text-[10px] font-bold uppercase tracking-widest block">Admin Master Wallet Balance</span>
+              </div>
+              <h3 className="text-3xl font-extrabold text-white tracking-tight">{formatMoney(adminWallet.balance)}</h3>
+              <span className="text-[10px] text-slate-500 font-semibold block">Total Deposits: {formatMoney(adminWallet.total_credits)} | Total Disbursed: {formatMoney(adminWallet.total_debits)}</span>
             </div>
-            <h3 className="text-3xl font-extrabold text-white tracking-tight">{formatMoney(adminWallet.balance)}</h3>
-            <span className="text-[10px] text-slate-500 font-semibold block">Total Deposits: {formatMoney(adminWallet.total_credits)} | Total Disbursed: {formatMoney(adminWallet.total_debits)}</span>
-          </div>
 
-          <button
-            onClick={() => { setDepositOpen(true); setAdjustAction('INCREASE'); }}
-            className="px-4 py-2.5 bg-teal-650 hover:bg-teal-600 active:scale-[0.98] text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-lg flex items-center justify-center gap-1.5 cursor-pointer transition-all shrink-0 border border-teal-500/20"
-          >
-            <Coins className="w-4 h-4 text-teal-450 shrink-0" />
-            Adjust Balance
-          </button>
+            <button
+              onClick={() => { setDepositOpen(true); setAdjustAction('INCREASE'); }}
+              className="px-4 py-2.5 bg-teal-650 hover:bg-teal-600 active:scale-[0.98] text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-lg flex items-center justify-center gap-1.5 cursor-pointer transition-all shrink-0 border border-teal-500/20"
+            >
+              <Coins className="w-4 h-4 text-teal-450 shrink-0" />
+              Adjust Balance
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-[#0a122c] border border-slate-900/60 rounded-3xl p-6 relative overflow-hidden shadow-lg flex flex-col justify-between">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-teal-500 to-indigo-500" />
+          <div>
+            <div className="flex items-center gap-2 text-teal-455">
+              <Users className="w-4.5 h-4.5" />
+              <span className="text-[10px] font-bold uppercase tracking-widest block">User Statistics</span>
+            </div>
+            <h3 className="text-3xl font-extrabold text-white tracking-tight mt-2">{users.length}</h3>
+            <span className="text-[10px] text-slate-500 font-semibold block mt-1">
+              Active: {users.filter(u => u.status === 'ACTIVE').length} | Suspended: {users.filter(u => u.status === 'SUSPENDED').length}
+            </span>
+          </div>
+          <div className="text-[10px] text-slate-400 font-semibold mt-4">
+            Total active customer profiles registered
+          </div>
         </div>
       </div>
 

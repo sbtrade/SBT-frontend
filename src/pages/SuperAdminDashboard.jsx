@@ -313,7 +313,7 @@ export default function SuperAdminDashboard() {
                         </td>
                         <td className="py-3.5 text-right font-mono font-bold text-teal-400">{formatMoney(u.balance)}</td>
                         <td className="py-3.5 text-right px-2">
-                          <StatusBadge status={u.status} />
+                          <StatusBadge status={u.is_deleted ? 'DELETED' : u.status} />
                         </td>
                       </tr>
                     ))
