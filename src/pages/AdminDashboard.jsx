@@ -22,8 +22,16 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const getFileUrl = (url) => {
   if (!url) return '';
-  const base = API_BASE_URL.endsWith('/api') ? API_BASE_URL.slice(0, -4) : API_BASE_URL;
-  return `${base}${url}`;
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  let base = API_BASE_URL;
+  if (base.endsWith('/')) {
+    base = base.slice(0, -1);
+  }
+  if (base.endsWith('/api')) {
+    base = base.slice(0, -4);
+  }
+  const cleanUrl = url.startsWith('/') ? url : `/${url}`;
+  return `${base}${cleanUrl}`;
 };
 
 export default function AdminDashboard() {

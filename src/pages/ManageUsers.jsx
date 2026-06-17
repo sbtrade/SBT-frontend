@@ -2,14 +2,22 @@ import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
 import StatusBadge from '../components/StatusBadge';
 import Modal from '../components/Modal';
-import { Search, Users, RefreshCw, UserX, UserCheck, Trash2, Coins, FileText, Eye, AlertTriangle } from 'lucide-react';
+import { Search, Users, RefreshCw, UserX, UserCheck, Trash2, Coins, FileText, Eye, AlertTriangle, ArrowRightLeft, HelpCircle } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const getFileUrl = (url) => {
   if (!url) return '';
-  const base = API_BASE_URL.endsWith('/api') ? API_BASE_URL.slice(0, -4) : API_BASE_URL;
-  return `${base}${url}`;
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  let base = API_BASE_URL;
+  if (base.endsWith('/')) {
+    base = base.slice(0, -1);
+  }
+  if (base.endsWith('/api')) {
+    base = base.slice(0, -4);
+  }
+  const cleanUrl = url.startsWith('/') ? url : `/${url}`;
+  return `${base}${cleanUrl}`;
 };
 
 export default function ManageUsers() {
@@ -29,6 +37,13 @@ export default function ManageUsers() {
   const [kycLoading, setKycLoading] = useState(false);
   const [userKyc, setUserKyc] = useState(null);
   const [kycError, setKycError] = useState('');
+
+  // Transaction history states
+  const [txHistoryOpen, setTxHistoryOpen] = useState(false);
+  const [txLoading, setTxLoading] = useState(false);
+  const [userTransactions, setUserTransactions] = useState([]);
+  const [txError, setTxError] = useState('');
+  const [selectedTx, setSelectedTx] = useState(null);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -97,6 +112,23 @@ export default function ManageUsers() {
       setKycError(err.response?.data?.error || 'No KYC documents found for this user.');
     } finally {
       setKycLoading(false);
+    }
+  };
+
+  const handleViewTransactions = async (user) => {
+    setSelectedUser(user);
+    setTxError('');
+    setUserTransactions([]);
+    setTxLoading(true);
+    setTxHistoryOpen(true);
+    try {
+      const res = await api.get(`/admin/users/${user.id}/transactions`);
+      setUserTransactions(res.data);
+    } catch (err) {
+      console.error('Fetch user transactions error:', err);
+      setTxError(err.response?.data?.error || 'Failed to load transaction ledger for this user.');
+    } finally {
+      setTxLoading(false);
     }
   };
 
@@ -231,6 +263,14 @@ export default function ManageUsers() {
                         >
                           <FileText className="w-3.5 h-3.5 shrink-0" />
                           KYC
+                        </button>
+                        <button
+                          onClick={() => handleViewTransactions(u)}
+                          disabled={actionLoading}
+                          className="px-2 py-1 bg-amber-500/20 border border-amber-500/40 hover:bg-amber-500/30 text-amber-400 rounded text-[10px] font-bold uppercase transition-all cursor-pointer inline-flex items-center gap-1"
+                        >
+                          <ArrowRightLeft className="w-3.5 h-3.5 shrink-0" />
+                          History
                         </button>
                         <button
                           onClick={() => { setSelectedUser(u); setAdjustAmount(''); setAdjustAction('INCREASE'); setAdjustModalOpen(true); }}
@@ -412,6 +452,208 @@ export default function ManageUsers() {
         )}
       </Modal>
 
+      {/* User Transaction Ledger Modal */}
+      <Modal isOpen={txHistoryOpen} onClose={() => { setTxHistoryOpen(false); setSelectedUser(null); setUserTransactions([]); }} title="Customer Transaction Ledger">
+        {selectedUser && (
+          <div className="space-y-4">
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-900 space-y-1">
+              <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Customer Details</span>
+              <span className="block font-bold text-slate-200 text-sm">{selectedUser.fullname}</span>
+              <span className="block font-mono text-[10px] text-slate-400 mt-0.5">User ID: {selectedUser.user_id}</span>
+              <span className="block font-mono text-[10px] text-teal-450 mt-0.5">Current Balance: {formatMoney(selectedUser.balance)}</span>
+            </div>
+
+            {txLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="w-6 h-6 border-2 border-teal-500/30 border-t-teal-500 rounded-full animate-spin" />
+              </div>
+            ) : txError ? (
+              <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/25 text-rose-350 text-xs font-semibold text-center leading-relaxed">
+                {txError}
+              </div>
+            ) : userTransactions.length === 0 ? (
+              <p className="text-xs text-slate-500 text-center py-8 font-semibold">No transaction records found for this user.</p>
+            ) : (
+              <div className="max-h-[350px] overflow-y-auto border border-slate-900 rounded-2xl">
+                <table className="w-full text-left border-collapse text-[11px]">
+                  <thead>
+                    <tr className="border-b border-slate-900 bg-slate-950/40 text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                      <th className="py-2.5 px-3">Date</th>
+                      <th className="py-2.5">Type</th>
+                      <th className="py-2.5 text-right">Amount</th>
+                      <th className="py-2.5 text-right">Status</th>
+                      <th className="py-2.5 text-right px-3">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-900/40 text-slate-350 font-semibold">
+                    {userTransactions.map((tx) => (
+                      <tr key={tx.id} className="hover:bg-slate-950/20 transition-colors">
+                        <td className="py-2.5 px-3 font-mono text-[10px] text-slate-400">
+                          {new Date(tx.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}
+                        </td>
+                        <td className="py-2.5 font-bold uppercase text-slate-200 text-[10px]">{tx.type}</td>
+                        <td className={`py-2.5 text-right font-mono font-bold ${
+                          tx.type === 'DEBIT' || tx.type === 'TRANSFER' || tx.type === 'WITHDRAWAL' ? 'text-rose-455' : 'text-teal-400'
+                        }`}>
+                          {tx.type === 'DEBIT' || tx.type === 'TRANSFER' || tx.type === 'WITHDRAWAL' ? '-' : '+'}
+                          {formatMoney(tx.amount)}
+                        </td>
+                        <td className="py-2.5 text-right">
+                          <StatusBadge status={tx.status} />
+                        </td>
+                        <td className="py-2.5 text-right px-3">
+                          <button
+                            onClick={() => setSelectedTx(tx)}
+                            className="px-2 py-0.5 bg-slate-900 border border-slate-850 hover:border-slate-800 text-slate-300 hover:text-white rounded text-[9px] font-bold uppercase transition-all cursor-pointer"
+                          >
+                            Receipt
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      {/* Transaction Details Receipt Modal */}
+      <Modal isOpen={!!selectedTx} onClose={() => setSelectedTx(null)} title="Transaction Receipt">
+        {selectedTx && (
+          <div className="flex flex-col items-center py-4 space-y-6">
+            
+            {/* Logo */}
+            <SbtLogo className="mb-1" />
+
+            {/* Amount */}
+            <div className="text-center space-y-1">
+              <span className="text-3xl font-black text-white tracking-tight">
+                {selectedTx.type === 'DEBIT' || selectedTx.type === 'TRANSFER' || selectedTx.type === 'WITHDRAWAL' ? '-' : '+'}
+                {formatMoney(selectedTx.amount)}
+              </span>
+              {selectedTx.type === 'WITHDRAWAL' && selectedTx.btc_amount && (
+                <span className="block text-xs font-mono text-slate-400 font-semibold">
+                  ≈ -{parseFloat(selectedTx.btc_amount).toFixed(6)} BTC
+                </span>
+              )}
+              <span className="block text-[9px] font-bold text-slate-500 uppercase tracking-widest">
+                {selectedTx.type}
+              </span>
+            </div>
+
+            {/* Detail Card */}
+            <div className="w-full bg-[#030712]/60 border border-slate-900 rounded-2xl p-5 space-y-4 shadow-inner">
+              {/* Date */}
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-500 font-semibold uppercase tracking-wider text-[10px]">Date</span>
+                <span className="text-slate-200 font-bold">
+                  {new Date(selectedTx.created_at).toLocaleString('en-US', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true
+                  })}
+                </span>
+              </div>
+
+              {/* Status */}
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-500 font-semibold uppercase tracking-wider text-[10px] flex items-center gap-1">
+                  Status
+                  <HelpCircle className="w-3.5 h-3.5 text-slate-500 shrink-0" title="Transaction state in database ledger" />
+                </span>
+                <div className="flex items-center">
+                  <StatusBadge status={selectedTx.status} />
+                </div>
+              </div>
+
+              {/* Recipient / Source */}
+              <div className="flex justify-between items-start text-xs pt-3 border-t border-slate-900/60">
+                <span className="text-slate-500 font-semibold uppercase tracking-wider text-[10px] mt-0.5">
+                  {selectedTx.type === 'DEPOSIT' || selectedTx.type === 'CREDIT' ? 'Source' : 'Recipient'}
+                </span>
+                <div className="text-right">
+                  {selectedTx.type === 'TRANSFER' ? (
+                    <div>
+                      <span className="block text-slate-200 font-bold">
+                        {selectedTx.receiver_id_str === 'EXTERNAL' ? 'External Recipient' : (selectedTx.receiver_id_str || 'External Address')}
+                      </span>
+                      {selectedTx.transaction_reference && (
+                        <span className="block font-mono text-[9px] text-teal-450 select-all break-all mt-0.5" title="Copy recipient wallet address">
+                          {selectedTx.transaction_reference}
+                        </span>
+                      )}
+                    </div>
+                  ) : selectedTx.type === 'WITHDRAWAL' ? (
+                    <span className="block font-mono text-[10px] text-slate-400 break-all select-all">
+                      {selectedTx.tx_hash ? `${selectedTx.tx_hash.substring(0, 12)}...${selectedTx.tx_hash.substring(selectedTx.tx_hash.length - 10)}` : 'Custody Address'}
+                    </span>
+                  ) : (
+                    <span className="block text-slate-200 font-bold uppercase tracking-wider text-[10px]">
+                      {selectedTx.payment_id || 'System Ledger'}
+                    </span>
+                  )}
+                </div>
+              </div>
+              
+              {/* Description */}
+              <div className="flex justify-between items-start text-xs pt-3 border-t border-slate-900/60">
+                <span className="text-slate-500 font-semibold uppercase tracking-wider text-[10px]">Description</span>
+                <span className="text-slate-400 font-normal max-w-[180px] text-right break-words">{selectedTx.description}</span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setSelectedTx(null)}
+              className="w-full py-2.5 bg-slate-900 border border-slate-850 hover:border-slate-800 text-slate-400 hover:text-white rounded-xl text-xs font-bold uppercase cursor-pointer transition-all"
+            >
+              Close Receipt
+            </button>
+          </div>
+        )}
+      </Modal>
+
     </div>
   );
 }
+
+// Interlocking curved logo component with glow drawn in responsive SVG
+const SbtLogo = ({ className = "w-16 h-16" }) => (
+  <div className={`flex flex-col items-center justify-center ${className}`}>
+    <svg viewBox="0 0 100 100" className="w-16 h-16">
+      <defs>
+        <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.8" />
+          <stop offset="100%" stopColor="#0284c7" stopOpacity="0" />
+        </radialGradient>
+        <linearGradient id="grad-teal" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#2dd4bf" />
+          <stop offset="100%" stopColor="#0f766e" />
+        </linearGradient>
+        <linearGradient id="grad-blue" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#0284c7" />
+          <stop offset="100%" stopColor="#1e3a8a" />
+        </linearGradient>
+      </defs>
+      
+      {/* Central glowing circular area */}
+      <circle cx="50" cy="50" r="16" fill="url(#glow)" />
+      <circle cx="50" cy="50" r="10" fill="none" stroke="#e2e8f0" strokeWidth="2.5" />
+      
+      {/* Four interlocking curved arcs */}
+      {/* Top arc */}
+      <path d="M 50 20 A 30 30 0 0 1 80 50 A 4 4 0 0 1 72 50 A 22 22 0 0 0 50 28 A 4 4 0 0 1 50 20 Z" fill="url(#grad-teal)" />
+      {/* Right arc */}
+      <path d="M 80 50 A 30 30 0 0 1 50 80 A 4 4 0 0 1 50 72 A 22 22 0 0 0 72 50 A 4 4 0 0 1 80 50 Z" fill="url(#grad-blue)" transform="rotate(90 50 50)" />
+      {/* Bottom arc */}
+      <path d="M 50 80 A 30 30 0 0 1 20 50 A 4 4 0 0 1 28 50 A 22 22 0 0 0 50 72 A 4 4 0 0 1 50 80 Z" fill="url(#grad-teal)" transform="rotate(180 50 50)" />
+      {/* Left arc */}
+      <path d="M 20 50 A 30 30 0 0 1 50 20 A 4 4 0 0 1 50 28 A 22 22 0 0 0 28 50 A 4 4 0 0 1 20 50 Z" fill="url(#grad-blue)" transform="rotate(270 50 50)" />
+    </svg>
+    <span className="text-xl font-black tracking-widest text-[#38bdf8] mt-2 font-sans">SBT</span>
+  </div>
+);
