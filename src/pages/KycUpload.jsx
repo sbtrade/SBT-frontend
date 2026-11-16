@@ -37,6 +37,52 @@ export default function KycUpload() {
     fetchKycStatus();
   }, []);
 
+  const compressAndConvertToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      if (file.type === 'application/pdf') {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = (error) => reject(error);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target.result;
+        img.onload = () => {
+          const maxWidth = 1280;
+          const maxHeight = 1280;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > maxWidth) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxHeight) {
+              width = Math.round((width * maxHeight) / height);
+              height = maxHeight;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.82));
+        };
+        img.onerror = () => resolve(event.target.result);
+      };
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
   const handleUpload = async (e) => {
     e.preventDefault();
     if (!frontFile || !backFile) {
@@ -48,23 +94,22 @@ export default function KycUpload() {
     setSuccess('');
     setSubmitting(true);
 
-    const formData = new FormData();
-    formData.append('front', frontFile);
-    formData.append('back', backFile);
-
     try {
-      const res = await api.post('/wallet/kyc-upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        }
+      const frontBase64 = await compressAndConvertToBase64(frontFile);
+      const backBase64 = await compressAndConvertToBase64(backFile);
+
+      const res = await api.post('/wallet/kyc-upload', {
+        front: frontBase64,
+        back: backBase64
       });
-      setSuccess(res.data.message);
+
+      setSuccess(res.data.message || 'KYC documents uploaded successfully. Admin review pending.');
       setFrontFile(null);
       setBackFile(null);
       fetchKycStatus();
     } catch (err) {
       console.error('KYC Upload error:', err);
-      setError(err.response?.data?.error || 'Failed to upload documents.');
+      setError(err.response?.data?.error || err.message || 'Failed to upload documents.');
     } finally {
       setSubmitting(false);
     }
